@@ -9,6 +9,7 @@ def create_access_token(user):
     access_expiry = now + timedelta(hours=settings.JWT_ACCESS_TOKEN_EXPIRATION)
 
     payload = {
+        'user_id': str(user.id),
         'email': user.email,
         'exp': access_expiry,
         'iat': now,
@@ -28,6 +29,7 @@ def create_refresh_token(user):
         timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRATION)
 
     payload = {
+        'user_id': str(user.id),
         'email': user.email,
         'exp': refress_expiry,
         'iat': now,
@@ -35,6 +37,6 @@ def create_refresh_token(user):
     }
 
     token = jwt.encode(payload, settings.JWT_SECURITY,
-                       algorithm=settings.JWT_ALGORITH)
+                       algorithm=settings.JWT_ALGORITHM)
 
     return token

@@ -11,16 +11,14 @@ class CustomJwtAuthentication(BaseAuthentication):
             'authorization') or request.META.get('HTTP_AUTHORIZATION')
 
         if not auth_token:
-            raise exceptions.AuthenticationFailed({
-                'deatils': "Token not provides"
-            }, status=status.HTTP_401_UNAUTHORIZED)
+            return None
 
         parts = auth_token.split()
 
         if len(parts) != 2 or parts[0].lower() != 'bearer':
             raise exceptions.AuthenticationFailed({
                 'details': 'Inavlid Token'
-            }, status=status.HTTP_401_UNAUTHORIZED)
+            })
 
         token = parts[1]
 
@@ -28,14 +26,14 @@ class CustomJwtAuthentication(BaseAuthentication):
             payload = jwt.decode(
                 token,
                 settings.JWT_SECURITY,
-                algorithms=[settings.JWT_ALGORITH]
+                algorithms=[settings.JWT_ALGORITHM]
             )
 
         except jwt.ExpiredSignatureError:
-            raise exceptions.AuthenticationFailed('Inavlid Signature')
+            raise exceptions.AuthenticationFailed('Token Expired')
 
         except jwt.InvalidTokenError:
-            raise exceptions.AuthenticationFailed('Token Expired')
+            raise exceptions.AuthenticationFailed('Invalid Token')
 
         types = ['access_token', 'refresh_token']
 
