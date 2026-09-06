@@ -63,3 +63,13 @@ class TenantAwareModel(models.Model):
 
     class Meta:
         abstract = True
+
+
+class Project(TenantAwareModel):
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, related_name='created_projects')
+
+    def __str__(self):
+        return f"[{self.tenant.slug}] {self.title}"
