@@ -1,16 +1,19 @@
+from django.utils import timezone
 from rest_framework import viewsets, exceptions
 from django.contrib.auth import authenticate
 from rest_framework.views import APIView
 from rest_framework import generics
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import status, viewsets
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.db import transaction
-from .utils import create_access_token, create_refresh_token, decode_token
-from .models import User, Tenant, TenantUser, Project
-from .serializers import UserSerializer, TenantSerializer, TenantUserSerializer, ProjectSerializer
+from .utils import create_access_token, create_refresh_token, decode_token, secret_token, expiry_date
+from .models import User, Tenant, TenantUser, Project, Invitation
+from .serializers import UserSerializer, TenantSerializer, TenantUserSerializer, ProjectSerializer, InvitationSerializer
 from .authentication import CustomJwtAuthentication
-from .permissions import IsAdminOrReadOnly, IsMember
+from .permissions import IsAdminOrReadOnly, IsMember, IsManager
+from .tasks import send_invite_email
+
 # Create your views here.
 
 
@@ -164,3 +167,146 @@ class ProjectView(APIView):
         )
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class TenantInvitationView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminOrReadOnly, IsManager]
+
+    def post(self, request):
+        if not request.tenant or request.tenant is None:
+            return Response('Tenant Context Missing', status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = InvitationSerializer(data=request.data)
+
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        email = serializer.validated_data['email']
+        target_role = serializer.validated_data['role']
+
+        tenantuser = TenantUser.objects.filter(
+            tenant=request.tenant, user__email=email)
+
+        if tenantuser.exists():
+            return Response('User is already a member of this workspace', status=status.HTTP_400_BAD_REQUEST)
+
+        if Invitation.objects.filter(tenant=request.tenant, email=email, status='PENDING').exists():
+            return Response('Invitation already sent/exist for this email', status=status.HTTP_400_BAD_REQUEST)
+        token = secret_token()
+
+        with transaction.atomic():
+            serializer.save(
+                tenant=request.tenant,
+                email=email,
+                role=target_role,
+                token=token,
+                invited_by=request.user,
+                status='PENDING',
+                expiry_at=expiry_date(7)
+            )
+            transaction.on_commit(
+                lambda: send_invite_email.delay(
+                    token,
+                    email,
+                    tenant_name=request.tenant.name
+                )
+            )
+
+        return Response('Successfully Invitation sent', status=status.HTTP_201_CREATED)
+
+
+class AcceptInviteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        token = request.data.get('token', None)
+
+        invitation = Invitation.objects.filter(
+            token=token, status='PENDING').first()
+
+        if not invitation or invitation.expiry_at < timezone.now():
+            if invitation:
+                invitation.status = 'EXPIRED'
+                invitation.save()
+            return Response(
+                {
+                    'error': 'Invalid or expired invitation token'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if request.user.email != invitation.email:
+            return Response(
+                {
+                    'detail': 'This Invitation was sent to different email address'
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Idomptancy check
+        if TenantUser.objects.filter(tenant=invitation.tenant, user=request.user).exists():
+            return Response('You are already a member of this workspace', status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            TenantUser.objects.create(
+                tenant=invitation.tenant,
+                user=request.user,
+                role=invitation.role
+            )
+
+            invitation.status = 'ACCEPTED'
+            invitation.save()
+
+        return Response('Successfully joined workspace', status=status.HTTP_200_OK)
+
+
+class ProjectViewset(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, IsMember]
+
+    def get_queryset(self):
+        tenant = getattr(self.request, 'tenant', None)
+        tenant_user = getattr(self.request, 'tenant_user', None)
+        if not tenant or not tenant_user:
+            return Project.objects.none()
+
+        base_project = Project.objects.filter(tenant=tenant)
+
+        if tenant_user.role in ['ADMIN', 'MANAGER']:
+            return base_project
+
+        else:
+            return base_project.filter(
+                Q(created_by=self.request.user) |
+                Q(assigned_members=self.request.user)
+            ).distinct()
+
+    def perform_create(self, serializer):
+        serializer.save(
+            tenant=self.request.tenant,
+            created_by=self.request.user
+        )
+
+
+class UserWorkspaceView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user_membership = TenantUser.objects.filter(
+            user=request.user).select_related('tenant')
+
+        tenant_list = []
+
+        for member in user_membership:
+            if not member.tenant.is_active:
+                continue
+
+            tenant_list.append(
+                {
+                    'tenant_id': member.tenant.id,
+                    'name': member.tenant.name,
+                    'slug': member.tenant.slug,
+                    'plan': member.tenant.plan,
+                    'my_role': member.role
+                }
+            )
+        return Response(tenant_list, status=status.HTTP_200_OK)

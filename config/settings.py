@@ -48,6 +48,7 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "core.middleware.TenantMiddleware",
+    "core.middleware.CustomTenantMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -142,3 +143,14 @@ REST_FRAMEWORK = {
         'core.authentication.CustomJwtAuthentication'
     ],
 }
+
+CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
+CELERY_RESULT_BACKEND = 'redis://127.0.0.1:6379/1'
+
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_HOST_USER = 'admin@workspace.com'
+EMAIL_PORT = 587
+EMAIL_HOST_PASSWORD = 'Admin@123'
+EMAIL_USE_TSL = True
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER

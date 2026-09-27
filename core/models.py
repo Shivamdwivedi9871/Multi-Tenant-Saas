@@ -4,6 +4,14 @@ from django.contrib.auth.models import AbstractUser
 # Create your models here.
 
 
+class RoleChoices:
+    CHOICES = [
+        ('ADMIN', 'admin'),
+        ('MANAGER', 'manager'),
+        ('MEMBER', 'member')
+    ]
+
+
 class User(AbstractUser):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email = models.EmailField(unique=True)
@@ -36,19 +44,13 @@ class Tenant(models.Model):
 
 
 class TenantUser(models.Model):
-    class Role:
-        CHOICES = [
-            ('ADMIN', 'admin'),
-            ('MANAGER', 'manager'),
-            ('MEMBER', 'member')
-        ]
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(
         Tenant, on_delete=models.CASCADE, related_name='membership')
     user = models.ForeignKey(
         User, on_delete=models.CASCADE, related_name='tenant_membership')
     role = models.CharField(
-        max_length=200, choices=Role.CHOICES, default='MEMBER')
+        max_length=200, choices=RoleChoices.CHOICES, default='MEMBER')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -71,5 +73,27 @@ class Project(TenantAwareModel):
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, related_name='created_projects')
 
+    assigned_members = models.ManyToManyField(
+        User, blank=True, related_name='assigned_project')
+
     def __str__(self):
         return f"[{self.tenant.slug}] {self.title}"
+
+
+class Invitation(models.Model):
+    class Status:
+        CHOICES = [
+            ('PENDING', 'pending'),
+            ('ACCEPTED', 'accepted'),
+            ('EXPIRED', 'expired')
+        ]
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE)
+    email = models.EmailField()
+    role = models.CharField(max_length=15, choices=RoleChoices.CHOICES)
+    token = models.CharField(max_length=255, unique=True)
+    invited_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    status = models.CharField(
+        max_length=20, choices=Status.CHOICES, default='PENDING')
+    created_at = models.DateTimeField(auto_now_add=True)
+    expiry_at = models.DateTimeField()

@@ -1,4 +1,6 @@
 import jwt
+import secrets
+from datetime import datetime
 from datetime import datetime, timezone, timedelta
 from django.conf import settings
 from rest_framework import exceptions
@@ -58,3 +60,14 @@ def decode_token(token):
 
     except jwt.InvalidTokenError:
         raise exceptions.AuthenticationFailed("Inavlid Token")
+
+
+def secret_token():
+    url_token = secrets.token_urlsafe(32)
+
+    return url_token
+
+
+def expiry_date(value: int):
+    expiry_date = datetime.now()+value
+    return expiry_date

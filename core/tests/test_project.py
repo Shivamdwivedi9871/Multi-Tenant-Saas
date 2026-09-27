@@ -13,7 +13,7 @@ def api_client():
 @pytest.fixture
 def user(db):
     user = User.objects.create_user(
-        username='test@example.com', password='Password123!')
+        username='test@example.com', email='test@example.com', password='Password123!')
     return user
 
 
@@ -50,6 +50,6 @@ def test_successfull_project_creation(api_client, user, tenant, tenant_user):
     }
 
     response = api_client.post(
-        '/v1/projects/', data=payload, format='json', HTTP_X_TENANT_ID=str(tenant.id))
+        '/v1/projects/', data=payload, format='json', HTTP_X_TENANT_SLUG=tenant.slug)
 
     assert response.status_code == 201

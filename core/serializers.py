@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import (User, Tenant, TenantUser, Project)
+from .models import (User, Tenant, TenantUser, Project, Invitation)
 
 # User Serializer
 
@@ -46,3 +46,11 @@ class ProjectSerializer(serializers.ModelSerializer):
         fields = ['id', 'title', 'description',
                   'created_by', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_by', 'created_at', 'updated_at']
+
+
+class InvitationSerializer(serializers.ModelSerializer):
+    class Meta:
+        fields = ['id', 'tenant', 'email', 'role',
+                  'token', 'invited_by', 'status', 'created_at', 'expiry_at']
+        read_only_fields = ['id', 'tenant',
+                            'invited_by', 'token', 'created_at']
